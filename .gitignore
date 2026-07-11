@@ -19,3 +19,6 @@ dist/
 
 # Claude Code local settings
 .claude/settings.local.json
+
+# Personal files, not for the repo
+supporting-files/
