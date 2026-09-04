@@ -15,9 +15,11 @@ every Claude Code session in this repo.
 4. **`docs/architecture.md`** — v1 architecture + the Databricks v2 migration
    mapping.
 5. **`docs/ai-assisted-workflow.md`** — how a Jira ticket becomes merged code.
-6. **`docs/handoff-brief.md`** — the full distilled picture, if you need context
+6. **`docs/git-discipline.md`** — branch model, commits, PRs, branch protection,
+   automated branch cleanup. The single git reference.
+7. **`docs/handoff-brief.md`** — the full distilled picture, if you need context
    fast.
-7. **`docs/open-questions.md`** — choices to make during the build.
+8. **`docs/open-questions.md`** — choices to make during the build.
 
 `supporting-files/` is gitignored personal notes — background, not repo content.
 
@@ -42,7 +44,7 @@ AI-enabled Jira → agent → review → human-merge workflow.
   protection (D-013): PR required, force-push and deletion blocked. Claude Code
   **may open PRs** (`git push` a feature branch, `gh pr create`) but **must never
   merge them** (D-012) — every merge is a human action on github.com. Reviews
-  (subagent + CI) are advisory.
+  (subagent + CI) are advisory. Full rules: `docs/git-discipline.md`.
 - **SemVer from `0.0.0`.** `VERSION` + git tags + `CHANGELOG.md`. Stay in `0.x`
   through v1. Era tags: `airflow-platform-v1`, `databricks-platform-v2`.
 - **Parquet between Bronze/Silver/Gold layers.** Never CSV between layers. Raw
@@ -67,9 +69,8 @@ AI-enabled Jira → agent → review → human-merge workflow.
 
 ## Conventions
 
-- Branch: `hadur-nn-<short-slug>`. PR body: what/why · ticket link · test evidence
-  · `code-reviewer` findings + resolution · handoff notes.
-- Commits carry a smart-commit tag (`HADUR-nn ...`); squash-merge with
-  `HADUR-nn #done`.
+- **Git — branch naming, commits, PRs, merge, cleanup:** see
+  `docs/git-discipline.md`. In short: branch `hadur-nn-<slug>` off `main`,
+  Conventional Commits, squash-merge, human merges.
 - Tests: `pytest` for transform functions with real logic.
 - Airflow tasks are `PythonOperator`s calling `src/` functions. One DAG in v1.

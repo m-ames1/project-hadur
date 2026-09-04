@@ -270,3 +270,56 @@ forward to future repos.
 
 **Applied.** 2026-09-03 via `gh api --method PUT
 repos/m-ames1/project-hadur/branches/main/protection`.
+
+---
+
+## D-014 — Automated local branch cleanup + `main` fast-forward (SessionStart hook)
+
+- **Date:** 2026-09-04 · **Status:** Committed
+
+**Context.** After merging PRs on github.com, local branches linger and local
+`main` goes stale. GitHub is set to auto-delete head branches on merge, and
+`fetch.prune=true` clears stale `origin/*` refs — but neither removes the *local*
+branch or advances local `main`.
+
+**Decision.** A `SessionStart` hook
+(`.claude/hooks/prune-merged-branches.sh`, wired in `.claude/settings.json`) runs
+at the start of every Claude Code session and performs exactly two guarded
+mutations.
+
+**1. Delete a local branch — merged-PR-only.** Local branch `B` is deleted **iff
+all four hold**:
+1. A PR exists with head `B`, base `main`, state `MERGED` (`mergedAt` non-null,
+   `mergeCommit` present), confirmed via the GitHub API (`gh`) — not git's local
+   merge detection.
+2. `B`'s local tip SHA equals that PR's `headRefOid` (the exact merged commit) —
+   proves nothing local is lost.
+3. `B` is not `main`.
+4. `B` is not the currently checked-out branch.
+
+Never a trigger: `origin/B` gone; PR `CLOSED`; no PR; `git branch --merged`
+ancestry; force-pushed remote. Any failure → skip + log the reason.
+
+**2. Fast-forward local `main`.** After `git fetch --prune`, advance local `main`
+to `origin/main` **only on a clean fast-forward** — ref-only move when on another
+branch (working tree untouched), `merge --ff-only` when `main` is checked out.
+Never a merge commit, force, or rebase; never touches feature branches. Not
+fast-forwardable → leave alone + log. **Opt-out** for `git bisect` / pinning:
+`git config hadur.autoUpdateMain false` or a `.git/NO_AUTO_MAIN` sentinel.
+
+**Fail-safe.** Not a git repo, `gh` missing/unauthenticated, or offline → do
+nothing, exit 0. The hook can never block or error a session. Prints only when it
+acts.
+
+**Rationale.** Keeps the local branch list and `main` honest with zero risk: the
+only cause of a branch deletion is a confirmed merge, verified by SHA; the only
+change to `main` is a fast-forward. Mirrors team tooling (`gh-poi`,
+`git-delete-merged-branches`) where merge status is the sole trigger. The
+`main` fast-forward is the lower-value half — after `fetch`, `origin/main` is
+already current for rebasing — but it's safe and removes the "branched from stale
+`main`" footgun.
+
+**Implementation.** Docs (this record + `git-discipline.md` §6) on
+`docs/git-discipline`; the hook + `.claude/settings.json` wiring on
+`chore/branch-cleanup-hook` — decision and implementation as separate concerns
+(D-012/D-013 precedent).
