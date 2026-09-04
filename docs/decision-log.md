@@ -323,3 +323,112 @@ already current for rebasing — but it's safe and removes the "branched from st
 `docs/git-discipline`; the hook + `.claude/settings.json` wiring on
 `chore/branch-cleanup-hook` — decision and implementation as separate concerns
 (D-012/D-013 precedent).
+
+---
+
+## D-015 — Agent topology: minimal, isolation-driven
+
+- **Date:** 2026-09-04 · **Status:** Committed
+
+**Decision.** The AI-assisted workflow uses a deliberately small set of agents.
+Agent boundaries are drawn **only where context or bias isolation requires
+them** — never by task category, technology, or pipeline layer.
+
+The agent set:
+
+1. **Implementer** — the main Claude Code session, driven by `/work-ticket`. It
+   holds full repo context (`CLAUDE.md`, `docs/`, the ticket) and handles all
+   `feat` / `fix` / `chore` / `docs` work. It is the session, not a defined
+   subagent. One implementer.
+2. **`code-reviewer` subagent** (`.claude/agents/code-reviewer.md`) — a fresh
+   context window that has not seen the implementation reasoning. First-pass
+   review.
+3. **CI reviewer** — the GitHub Actions Claude review (Phase 2). A cold, separate
+   process that sees only the diff and PR description. The authoritative
+   pre-merge gate.
+
+A planning/architect subagent (epic → tickets) may be added later if that work
+grows; it is not part of the initial set. Both reviewers are advisory — the human
+merge is the gate (D-008, D-013).
+
+**Rationale.** A separate agent is justified only when it must *not* share the
+main session's context — for freshness (`code-reviewer`) or full isolation (CI
+reviewer). "Chore vs docs", "Bronze vs Silver vs Gold", and "Airflow vs dbt vs
+Snowflake" are labels, not structural boundaries: the same conventions, repo, and
+context apply. Per-domain agents would duplicate most of their instructions,
+drift out of sync with each other and with `CLAUDE.md`, and add cold-start and
+orchestration cost with no behavioural gain — a poor trade on a solo, time-boxed
+build.
+
+**Where specialization goes instead.**
+- **Domain rules → documentation.** Bronze/Silver/Gold responsibilities live in
+  `architecture.md`; deeper conventions get a dedicated doc. The implementer
+  reads the section the ticket points to.
+- **Repeatable procedures → skills.** A recurring checklist (e.g. "how an Airflow
+  task is written in this repo") becomes a `.claude/skills/` skill the
+  implementer loads when relevant — added once repetition justifies it, not up
+  front.
+- **Per-task instruction → the ticket.** Acceptance criteria plus links to the
+  relevant `docs/` sections are how a ticket says "this is a Bronze task, here
+  are the rules."
+- **Output category → the commit type.** `feat` / `fix` / `chore` / `docs` label
+  the change; they are not a reason for a different worker.
+
+**Consequences.** Intelligence concentrates in tickets and docs — versioned,
+reviewable, shared — rather than in a set of agent prompts that must be kept
+mutually consistent. Extends D-007 (Claude Code only, no Codex / `AGENTS.md`) and
+D-008 (human-gated two-tier review). Operational detail in
+`ai-assisted-workflow.md` §3.
+
+---
+
+## D-016 — v1 code review: `code-reviewer` subagent only; GitHub Actions review job deferred
+
+- **Date:** 2026-09-04 · **Status:** Committed
+
+**Context.** The workflow defines two automated code-review layers: the
+`code-reviewer` subagent (runs locally, before the PR) and a GitHub Actions job
+that runs the Claude model against the PR diff on GitHub's servers (D-008, D-015).
+The v1 question is whether to build both.
+
+**Decision.** v1 uses the **`code-reviewer` subagent only**, plus the mandatory
+human review on the PR. The **GitHub Actions review job is deferred** to Phase 2 —
+a documented, one-file add-on.
+
+**Why the two layers are not redundant.** They are not "fresh vs. stale" — the
+subagent runs in its own context window and never sees the parent session's
+reasoning. They do different jobs at different moments:
+
+- **Subagent** — a pre-flight pass *before the PR exists*. Fast and cheap; the
+  implementer is still warm and fixes findings in the same session, no
+  round-trip. Purpose: improve the artifact before a human sees it.
+- **GitHub Actions job** — a *gate* after the PR exists. Runs on every push, on a
+  clean machine, with a fixed neutral prompt; produces a merge-blocking status
+  check and an audit trail. Purpose: guarantee every PR got an independent look
+  regardless of how it was produced. Structurally impossible to prime — no
+  per-PR prompt is authored.
+
+Both use the same model, so neither catches a systematic model blind spot the
+other would.
+
+**Why subagent-only for v1.**
+- The human review on the PR is already an independent cold pass — the diff, read
+  fresh, before merge.
+- The subagent adds value immediately for free (one markdown file): cleaner PRs,
+  faster iteration.
+- The GitHub Actions job largely duplicates the careful human review, at real
+  cost — an `ANTHROPIC_API_KEY` secret, the `workflow` OAuth scope, tokens per
+  run, another moving part.
+- Its distinct payoff — an enforced, auditable "every PR is automatically gated"
+  narrative — matters for a team or an interview story, not for shipping the
+  5-day v1.
+
+**When to add the GitHub Actions job.** When the enforced CI gate is worth the
+setup: a visible status check that blocks merge, an audit trail, coverage for PRs
+that skip the local flow. One-file addition
+(`.github/workflows/code-review.yml` using `anthropics/claude-code-action`) plus
+the secret and scope. Tracked as Phase 2 in `ai-assisted-workflow.md`.
+
+**Naming.** The GitHub Actions job was previously called the "CI reviewer,"
+which conflates it with CI as a whole — GitHub Actions is the CI system; this is
+one job in it. Refer to it as the **GitHub Actions review job**.

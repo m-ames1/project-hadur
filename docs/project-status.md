@@ -16,7 +16,7 @@ changed, what's next, any gotchas. A cold session reads this first.
 
 ## What exists
 
-- `docs/` set: `handoff-brief.md`, `decision-log.md` (D-001..D-014),
+- `docs/` set: `handoff-brief.md`, `decision-log.md` (D-001..D-016),
   `architecture.md`, `ai-assisted-workflow.md`, `git-discipline.md`,
   `project-plan.md`, this file, `open-questions.md`.
 - `CLAUDE.md` router at repo root.
