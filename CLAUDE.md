@@ -28,10 +28,11 @@ every Claude Code session in this repo.
 ## What this is
 
 A simulated provider→customer data delivery. v1 = one Airflow DAG (local, Docker)
-moving a transactional feed through Bronze → Silver → Gold, cleaning dirty data,
-joining to a supporting table, and publishing a customer-ready **table** into
-Snowflake (DuckDB for local dev). v2 (future) migrates the whole platform to
-Databricks / Lakeflow.
+moving a transactional feed through staging → intermediate → marts (dbt's
+native layering; the medallion Bronze/Silver/Gold pattern is a v2 Databricks
+term, see D-018), cleaning dirty data, joining to a supporting table, and
+publishing a customer-ready **table** into Snowflake (DuckDB for local dev).
+v2 (future) migrates the whole platform to Databricks / Lakeflow.
 
 **Two goals:** prove real data-engineering capability, and demonstrate an
 AI-enabled Jira → agent → review → human-merge workflow.
@@ -48,9 +49,10 @@ AI-enabled Jira → agent → review → human-merge workflow.
   (subagent + CI) are advisory. Full rules: `docs/git-discipline.md`.
 - **SemVer from `0.0.0`.** `VERSION` + git tags + `CHANGELOG.md`. Stay in `0.x`
   through v1. Era tags: `airflow-platform-v1`, `databricks-platform-v2`.
-- **Bronze = raw data loaded into warehouse tables; Silver/Gold = dbt models in
-  the warehouse** (DuckDB local, Snowflake demo). Raw inputs stay CSV/JSON/TXT.
-  Customer delivery is a Snowflake table. No Parquet-between-layers contract.
+- **Raw = source data loaded into warehouse tables (not a dbt model); staging,
+  intermediate, and marts = dbt models in the warehouse** (DuckDB local,
+  Snowflake demo). Raw inputs stay CSV/JSON/TXT. Customer delivery is a
+  Snowflake table (a marts model). No Parquet-between-layers contract.
 - **Transformation is dbt SQL, portable across adapters** (DuckDB ↔ Snowflake ↔
   Databricks). Keep any Python transform helpers thin.
 - **Supplier-specific logic stays isolated under `src/<supplier>/`** and dbt

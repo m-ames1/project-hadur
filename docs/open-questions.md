@@ -7,12 +7,12 @@ these by adding a record to `decision-log.md` and striking the item here.
 
 ## To decide during the build
 
-1. **dbt adapter parity (Day 3–5).** Confirm the Silver/Gold models run
+1. **dbt adapter parity (Day 3–5).** Confirm the intermediate/marts models run
    identically on the `duckdb` and `snowflake` targets; note dialect divergence
    (`qualify`, date functions) and where a macro is needed.
 
 2. **Supporting/entity table (Day 2).** `members.csv` or `providers.csv` as the
-   table joined in Gold. Pick whichever makes the join and the seeded
+   table joined in the mart. Pick whichever makes the join and the seeded
    unmatched-ID issues most legible.
 
 3. **Atlassian MCP flavour (Day 1).** Official hosted remote server (OAuth, no
@@ -24,7 +24,7 @@ these by adding a record to `decision-log.md` and striking the item here.
    null rate on required fields). Set during build; record them.
 
 5. **Snowflake delivery schema + object naming (Day 1–5).**
-   `<db>.<gold|delivery>.<customer>_<dataset>`; role/warehouse sizing for the
+   `<db>.marts.<customer>_<dataset>`; role/warehouse sizing for the
    demo; whether local DuckDB mirrors the schema names.
 
 6. **Customer identity.** Is the "customer" an internal downstream consumer or an
@@ -40,8 +40,8 @@ these by adding a record to `decision-log.md` and striking the item here.
    on DuckDB.
 
 9. **dbt materializations.** Table vs incremental for
-   `silver_transactions_deduped`, `gold_*`, `delivery_log`; view vs table for
-   staging.
+   `int_transactions_deduped`, the marts models, `delivery_log`; view vs table
+   for staging.
 
 ---
 
