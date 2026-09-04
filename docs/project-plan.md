@@ -37,6 +37,10 @@ Stand up the delivery mechanism before any pipeline code.
 - **Dry run:** take one throwaway ticket through `/work-ticket` end to end; fix
   the command / subagent prompts from what breaks.
 - Start the docker-compose bring-up (can run in the background).
+- Scaffold `dbt/`, install dbt-core + dbt-duckdb + dbt-snowflake + dbt_utils,
+  `dbt debug` green on the `duckdb` target, `reference_codes` seed loads.
+  `~/.dbt/profiles.yml` set up locally (not committed). Snowflake target
+  configured but not required to connect until Day 5.
 - Tag `v0.0.0`.
 
 **Exit criterion:** a real ticket can be driven from Jira to a merged PR, with the
@@ -50,65 +54,67 @@ Stand up the delivery mechanism before any pipeline code.
   (`members.csv` or `providers.csv` — pick here), `reference_codes.csv`,
   `payload_metadata.json`, `provider_notes.txt`. Seed the deliberate quality
   issues (see `architecture.md` §2).
-- `bronze_ingest`: raw → Parquet, partitioned by ingest date / run id; capture
-  metadata; log row counts; no transforms.
-- Airflow DAG skeleton with `bronze_ingest` wired and runnable in the local
-  container.
-- **Engine decision:** get PySpark local mode working in the Airflow image, OR
-  fall back to pandas/polars — do not burn more than half a day on Spark-in-Docker
-  (D-006). Record the outcome in `decision-log.md`.
+- `load_bronze`: loads raw files into DuckDB `raw`/`bronze` schema; `dbt seed`
+  for reference codes. Capture ingest metadata; log row counts; no transforms.
+- Airflow DAG skeleton with `land_raw` + `load_bronze` wired and runnable in
+  the local container.
+- Confirm dbt runs clean on DuckDB — `dbt run` / `dbt seed` execute without
+  adapter errors against the Day 1 scaffold.
+- Keep raw archive + ingest log.
 
 **Exit criterion:** `airflow dags trigger transactional_pipeline` runs
-`bronze_ingest` green and Bronze Parquet lands with a metadata sidecar.
+`land_raw` and `load_bronze` green, and the raw files land in DuckDB `bronze`
+tables with an ingest log.
 
 ---
 
 ## Day 3 — Silver
 
-- `silver_clean`: casing, date parsing, trimming, type coercion.
-- `silver_validate`: schema check; reference-code check against
-  `reference_codes.csv`; null/range rules.
-- `silver_dedupe`: transactional dedup on the business key; late-arriving records
-  resolved latest-`updated_at`-wins.
-- Quarantine: bad rows → quarantine Parquet table + human-readable reject log.
-- DQ metrics JSON.
-- All Silver tasks wired into the DAG.
+- Build the Silver dbt models: `stg_transactions`/`stg_<entity>` →
+  `silver_transactions_validated` → `silver_transactions_deduped` →
+  `quarantine_transactions`/`reject_log` → `dq_metrics`, with `schema.yml`
+  tests (schema, null/range, reference-code `relationships`/`accepted_values`).
+- `quarantine_transactions` reproduces the bad-row predicate via a shared macro
+  also used to exclude rows from `silver_transactions_validated`/`_deduped`,
+  tagging each with a `reject_reason` (not dbt's `store_failures`).
+- Wire `dbt_run_silver` + `dbt_test_silver` into the DAG.
 
-**Exit criterion:** DAG runs Bronze → Silver green; quarantine table and DQ
-metrics JSON are produced; a known-bad seeded row is provably quarantined with a
-reason.
+**Exit criterion:** DAG runs `land_raw` → `load_bronze` → `dbt_run_silver` →
+`dbt_test_silver` green; `quarantine_transactions` and `dq_metrics` are
+populated; a known-bad seeded row is provably quarantined with a reason.
 
 ---
 
 ## Day 4 — Gold + the join + failure demo
 
-- `dq_check`: reads Silver DQ metrics; fails the DAG on breached thresholds
-  (set the thresholds here; record them).
-- `gold_build`: join cleaned transactions to the supporting table; apply customer
-  delivery rules; write Gold Parquet.
-- `gold_publish`: load `delivery.<customer>_<dataset>` into Postgres — explicit
-  DDL, PK on business key, upsert/`MERGE` for idempotent reruns, delivery metadata
-  columns, table comment + `data_dictionary` rows.
-- `delivery_manifest`: `delivery_log` row + CSV extract + Markdown DQ summary.
+- `dbt_test_silver` is the DQ gate — fails the DAG on breached thresholds (set
+  the thresholds here; record them).
+- `gold_*` dbt models: join deduped transactions to the supporting table;
+  apply customer delivery rules; materialize as a table; `unique`+`not_null`
+  tests on the business key.
+- `publish_gold`: writes the `delivery_log` row + CSV extract + Markdown DQ
+  summary; verifies Gold row count against `dq_metrics`.
 - **Failure-and-recovery demo:** feed a malformed file → a task fails → fix →
   rerun → success. Record it.
 
-**Exit criterion:** the full DAG runs green end to end; the delivered Postgres
-table is queryable with SQL and matches the expected row count in `delivery_log`;
-the failure demo is recorded.
+**Exit criterion:** the full DAG runs green end to end; the delivered table
+(Snowflake, or DuckDB locally) is queryable with SQL and matches the expected
+row count in `delivery_log`; the failure demo is recorded.
 
 ---
 
 ## Day 5 — Proof + story
 
-- `pytest` for the transform functions that carry real logic (clean, validate,
-  dedupe, join, delivery rules).
+- `dbt test` covers model logic; `pytest` covers the remaining Python (loaders,
+  notes parser).
 - v1 architecture diagram (rendered). Graduate decisions into `docs/` if any are
   still only in notes.
+- Do the real run on Snowflake: connect the `snowflake` target, `dbt build
+  --target snowflake`, capture screenshots (Snowflake table, `dbt docs` DAG,
+  Airflow graph, quarantine, `delivery_log`, delivery manifest).
 - README: setup + run instructions (`docker compose up`, trigger the DAG, where
-  outputs land, how to query the delivery table).
-- Screenshots: Airflow DAG graph, a task log, quarantine table, the delivered
-  table, `delivery_log`, the delivery manifest.
+  outputs land, how to query the delivery table on both targets).
+- Diagram + README updated for both targets.
 - Interview demo script / walkthrough notes in `demo/`.
 - Tag `v0.1.0`; update `CHANGELOG.md`.
 - Run the full Jira → PR → review → merge loop on at least two real tickets so the
@@ -128,12 +134,13 @@ Rough Jira structure — refine acceptance criteria per ticket at pickup time.
 |---|---|
 | **Project setup** | repo scaffold · pyenv/3.12 env · VERSION+CHANGELOG+SemVer · branch protection · CLAUDE.md |
 | **Agentic workflow** | Atlassian MCP + `.mcp.json` · `code-reviewer` subagent · `/work-ticket` command · Jira↔GitHub linking · CI review workflow (Phase 2) |
-| **Local platform** | docker-compose (trimmed) · Airflow image + engine (pyspark/pandas) · delivery Postgres schema |
+| **Local platform** | docker-compose · Airflow image · DuckDB warehouse · Snowflake target |
+| **dbt project** | `dbt_project.yml` · `~/.dbt/profiles.yml` (duckdb + snowflake, not committed) · seeds · dbt_utils |
 | **Synthetic data** | generator · seeded quality issues · data dictionary |
-| **Bronze** | `bronze_ingest` · ingestion metadata + row-count logging |
-| **Silver** | clean · validate (schema + reference codes) · dedupe + late-arriving · quarantine + reject log · DQ metrics |
-| **DQ gate** | `dq_check` task + thresholds |
-| **Gold delivery** | `gold_build` (join + rules) · `gold_publish` (Postgres table, DDL, upsert) · `delivery_manifest` + `delivery_log` |
+| **Bronze** | `load_bronze` · ingestion metadata + row-count logging |
+| **Silver** | dbt models (stg, validated, deduped, quarantine via shared macro, dq_metrics) + schema tests |
+| **DQ gate** | `dbt_test_silver` task + thresholds |
+| **Gold delivery** | gold dbt model (join + rules) · `publish_gold` (Snowflake) · `delivery_log` + `data_dictionary` models |
 | **Unstructured** | parse/classify `provider_notes.txt` → structured rows |
 | **Testing & QA** | pytest for transforms · failure-and-recovery demo |
 | **Docs & demo** | architecture diagram · README run instructions · screenshots · interview demo script |
@@ -147,3 +154,5 @@ Rough Jira structure — refine acceptance criteria per ticket at pickup time.
 - `Stop`-hook notifications.
 - Codex / `AGENTS.md`.
 - Anything Databricks / cloud (that is v2).
+- Snowflake as the primary dev warehouse — DuckDB is dev/CI, Snowflake is the
+  Day 5 demo target.

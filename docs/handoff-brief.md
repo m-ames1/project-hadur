@@ -35,9 +35,11 @@ guidance, review discipline, documentation, and a platform-modernization story."
 Committed 2026-09-01. The project is deliberately staged as a **platform
 modernization**, not a local build lifted to the cloud:
 
-- **v1 — Airflow-orchestrated platform.** Built end to end first, locally.
-- **v2 — Databricks / Lakeflow rebuild.** Done as a *migration off* the working
-  v1, not a fresh build.
+- **v1 — Airflow-orchestrated platform**, transformation in **dbt**, warehouse
+  is **DuckDB (local dev/CI) / Snowflake (demo)** (D-017). Built end to end
+  first, locally.
+- **v2 — Databricks migration design.** Done as a *migration off* the working
+  v1, not a fresh build (D-017 unaffected).
 
 The migration is itself a deliverable: one architecture diagram per platform, a
 migration decision record, the Airflow→Databricks component-mapping table filled
@@ -76,68 +78,78 @@ DAG, any cloud infra, Databricks.
 
 ## 4. Architecture (v1)
 
-Lakehouse-style Bronze / Silver / Gold, orchestrated as one Airflow DAG.
+Lakehouse-style Bronze / Silver / Gold, orchestrated as one Airflow DAG, with
+Silver and Gold implemented as **dbt models**.
 
 **DAG shape:**
 
 ```
-bronze_ingest
-  → silver_clean
-  → silver_validate
-  → silver_dedupe
-  → dq_check            (fails the DAG if DQ thresholds are breached)
-  → gold_build          (produces Gold Parquet)
-  → gold_publish        (loads the delivered table into Postgres)
-  → delivery_manifest   (writes delivery_log row + human-facing artifacts)
+land_raw
+  → load_bronze        (raw files -> warehouse raw/bronze tables;
+                         reference_codes.csv via dbt seed)
+  → dbt_run_silver      (dbt run  --select bronze silver)
+  → dbt_test_silver     (dbt test --select silver — DQ GATE: fails DAG on breach)
+  → dbt_run_gold        (dbt run  --select gold)
+  → dbt_test_gold       (dbt test --select gold)
+  → publish_gold        (verify row count vs dq_metrics; write delivery_log row;
+                          drop CSV extract + Markdown DQ summary)
+  → notify (optional)
 ```
 
-Tasks are `PythonOperator`s calling functions in `src/`. Supplier-specific logic
-stays isolated under `src/` so a future "extract a supplier into its own repo"
+`land_raw`/`load_bronze` are `PythonOperator`/`BashOperator` tasks calling
+functions in `src/`; `dbt_run_*`/`dbt_test_*` invoke dbt via `BashOperator`.
+Supplier-specific logic stays isolated under `src/` and, where relevant,
+`dbt/models/<supplier>/` so a future "extract a supplier into its own repo"
 step is plausible (the Theseus pattern) — do not split now.
 
 **Layer responsibilities:**
 
-- **Bronze** — ingest raw source files, land as Parquet, capture metadata, log
-  row counts, no destructive transforms.
-- **Silver** — clean (casing, date parsing, trimming, type coercion), validate
-  schema, validate reference codes, deduplicate (transactional dedup +
-  late-arriving records: latest `updated_at` wins), quarantine bad rows to a
-  quarantine table + reject log, emit DQ metrics.
-- **Gold** — join to the supporting table, apply customer delivery rules (column
-  selection, renames, formats, derived fields), build the delivered table,
-  produce the delivery manifest and a human-readable DQ summary.
+- **Bronze** (`load_bronze`, not dbt) — load raw source files into warehouse
+  `raw`/`bronze` tables; `reference_codes.csv` via `dbt seed`; capture ingest
+  metadata, log row counts; no destructive transforms.
+- **Silver** (dbt models) — `stg_transactions`/`stg_<entity>` clean (casing,
+  date parsing, trimming, type coercion); `silver_transactions_validated`
+  checks schema + reference codes as dbt tests; `silver_transactions_deduped`
+  dedupes (transactional dedup + late-arriving records: latest `updated_at`
+  wins via `qualify row_number()`); `quarantine_transactions` (+ `reject_log`)
+  reproduces the bad-row predicate via a shared macro so quarantine and
+  exclusion stay in sync; `dq_metrics` emits counts.
+- **Gold** (dbt models) — `gold_<customer>_<dataset>` joins to the supporting
+  table, applies customer delivery rules (column selection, renames, formats,
+  derived fields), materializes the delivered table; `delivery_log` and
+  `data_dictionary` models; `publish_gold` (Airflow task) verifies row count,
+  writes the `delivery_log` row, and drops the CSV extract + Markdown DQ
+  summary.
 
-**Compute engine:** write transform functions engine-agnostic at the boundary
-(in path → out path, operate on a DataFrame). Use **PySpark local mode**; fall
-back to **pandas/polars** the moment Spark-in-Docker eats more than half a day.
-The Parquet contract makes the engine swappable — that swappability is itself a
-point in the v2 story.
+**Transformation engine:** dbt SQL, portable across adapters — the same models
+run on **DuckDB** (local dev/CI) and **Snowflake** (deployed demo), and later
+Databricks/Spark SQL in v2. That adapter portability is itself a point in the
+v2 story (D-017).
 
 ---
 
 ## 5. File formats
 
-Short version: **CSV/JSON/TXT in → Parquet (v1) / Delta (v2) through the middle →
-a delivered table out.** Parquet between layers is the deliberate pivot that makes
-the v2 upgrade a swap, not a rewrite.
+Short version: **CSV/JSON/TXT in → dbt models building warehouse tables through
+the middle → a delivered table out**, on DuckDB locally and Snowflake for the
+demo (v1), Delta tables in v2. dbt's portability across adapters is the
+deliberate pivot that makes the v2 upgrade a storage/engine swap, not a
+transformation rewrite.
 
-| Stage | v1 — Airflow, local | v2 — Databricks |
+| Stage | v1 — Airflow + dbt, DuckDB/Snowflake | v2 — Databricks |
 |---|---|---|
 | Provider inputs (raw landing) | `transactions.csv`, supporting `.csv`, `reference_codes.csv`, `payload_metadata.json`, `provider_notes.txt` | **Same files, unchanged** — land in a cloud volume, ingested by Auto Loader |
-| Bronze storage | **Parquet**, partitioned by ingest date / run id | **Delta table** in Unity Catalog |
-| Silver storage | **Parquet**, partitioned | **Delta table** |
-| Gold storage | **Parquet** | **Delta table** |
-| Quarantine / rejects | Parquet table + human-readable reject log (CSV/JSON) | Delta table + expectations metrics |
-| Run metadata / DQ metrics | **JSON** sidecar files | Pipeline **event log** + Unity Catalog **system tables** |
+| Bronze storage | warehouse `raw`/`bronze` tables (DuckDB local / Snowflake demo), loaded by `load_bronze` | **Delta table** in Unity Catalog |
+| Silver storage | dbt models materialized in the warehouse | **Delta table** |
+| Gold storage | dbt models materialized in the warehouse | **Delta table** |
+| Quarantine / rejects | `quarantine_transactions` dbt model + `reject_log` export | Delta table + expectations metrics |
+| Run metadata / DQ metrics | `dq_metrics` dbt model / `bronze._ingest_log` | Pipeline **event log** + Unity Catalog **system tables** |
 | DQ summary (business-readable) | **Markdown** | **Markdown** |
-| Customer delivery (egress) | **Postgres table** (primary) + Parquet copy + CSV extract + JSON manifest | Gold **Delta table** in `prod_catalog.gold`, consumed via SQL warehouse or **Delta Sharing** |
-
-Never use CSV between layers — it loses types and schema and can't be the on-ramp
-to Delta.
+| Customer delivery (egress) | **Snowflake table** (primary; DuckDB locally) + CSV extract + Markdown DQ summary | Gold **Delta table** in `prod_catalog.gold`, consumed via SQL warehouse or **Delta Sharing** |
 
 `provider_notes.txt` stays a text input in both eras. A task parses/classifies it
-(keyword rules or a Claude call) and emits structured rows — Parquet in v1, Delta
-in v2.
+(keyword rules or a Claude call) and emits structured rows loaded to a
+bronze/silver table.
 
 ---
 
@@ -147,27 +159,24 @@ Earlier framing of "the customer always gets CSV" was corrected. CSV-over-SFTP i
 one common external pattern; warehouse-to-warehouse **table** delivery (a loaded
 table, a data share) is at least as common now and is more production-shaped.
 
-**v1 mechanism:** reuse the **Postgres already running** in the Airflow
-docker-compose. Add a dedicated database or schema as the "delivery warehouse."
-`gold_publish` loads `delivery.<customer>_<dataset>`. Keep a Parquet copy and a
-CSV extract as secondary audit artifacts.
+**v1 mechanism:** the customer dataset is a table built by the
+`gold_<customer>_<dataset>` **dbt model** in a Snowflake `gold`/`delivery`
+schema (DuckDB locally). Column selection/renaming, delivery rules (filters,
+derived fields, formatting), and `unique`+`not_null` tests on the business key
+live in the dbt model itself — not a separate load step.
 
-**Between Gold Parquet and the delivered table (`gold_publish`):**
-- Explicit DDL — column types, nullability, primary key on the business key.
-- Column selection / renaming to the customer contract.
-- Apply delivery rules (filters, derived fields, formatting).
-- Load strategy — full replace, or upsert / `MERGE` on business key for reruns.
-- Add delivery metadata columns: `delivery_run_id`, `delivered_at`.
-- Table comment + a row in a `data_dictionary` table.
+**`publish_gold` (Airflow task, runs after the dbt Gold models):**
+- Verify the Gold row count matches `dq_metrics`.
+- Write a row into the `delivery_log` dbt model (row count, checksum,
+  `dag_run_id`, `delivered_at`, status).
+- Drop the human-facing artifacts: a CSV extract and a Markdown DQ summary, as
+  secondary audit artifacts alongside the Snowflake table.
+- `data_dictionary` model documents columns from `schema.yml`.
 
-**`delivery_manifest`:** writes a row into a `delivery_log` table (row count,
-checksum, run id, timestamp) and drops the human-facing artifacts (CSV extract,
-Markdown DQ summary).
-
-**v2 mapping:** `gold_publish` is the one task that changes — Postgres load
-becomes a managed Delta table in `prod_catalog.gold`; consumption becomes a SQL
-warehouse query or Delta Sharing. Near-zero-diff on the Gold columns and business
-key.
+**v2 mapping:** the Gold dbt models keep running (dbt-databricks); the target
+warehouse changes — Snowflake table becomes a managed Delta table in
+`prod_catalog.gold`; consumption becomes a SQL warehouse query or Delta
+Sharing. Near-zero-diff on the Gold columns and business key.
 
 ---
 
@@ -255,9 +264,11 @@ synthetic providers get added later, that's the trigger to replay the split.
 
 - **Python 3.12** via **pyenv**, pinned to this project's virtualenv. Not the
   newest Python (wheel lag on PyArrow/Pandas/NumPy), not macOS system Python.
-- PySpark local mode (or pandas/polars fallback).
-- Airflow via trimmed official docker-compose: webserver, scheduler, Postgres,
-  **LocalExecutor** (not Celery/k8s). Drop Flower; `AIRFLOW__CORE__LOAD_EXAMPLES=false`.
+- dbt-core + dbt-duckdb + dbt-snowflake + dbt_utils. `~/.dbt/profiles.yml`
+  (not committed) with `duckdb` (default) and `snowflake` (demo) targets.
+- Airflow via trimmed official docker-compose: webserver, scheduler, Postgres
+  (metadata DB only), **LocalExecutor** (not Celery/k8s). Drop Flower;
+  `AIRFLOW__CORE__LOAD_EXAMPLES=false`.
 - **v2 (future) Databricks:** single workspace + Unity Catalog with
   `dev`/`staging`/`prod` catalogs (not three workspaces — avoids stray cloud
   networking cost), Databricks Asset Bundles + GitHub Actions, triggered
