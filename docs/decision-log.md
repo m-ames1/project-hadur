@@ -72,7 +72,8 @@ executor, no HA — that would be production-ops scope with no payoff here.
 
 ## D-004 — Parquet between layers in v1; Delta in v2
 
-- **Date:** 2026-09-03 · **Status:** Committed
+- **Date:** 2026-09-03 · **Status:** Superseded
+- **Superseded by.** D-017.
 
 **Decision.** Bronze, Silver, and Gold storage is **Parquet** in v1 (partitioned
 by ingest date / run id), becoming **Delta tables** in Unity Catalog in v2. Raw
@@ -87,7 +88,8 @@ on-ramp to Delta.
 
 ## D-005 — Gold delivers a Postgres table, not CSV files
 
-- **Date:** 2026-09-03 · **Status:** Committed
+- **Date:** 2026-09-03 · **Status:** Superseded
+- **Superseded by.** D-017.
 
 **Context.** Earlier framing was "the customer always gets CSV." Corrected:
 CSV-over-SFTP is one common external pattern, but warehouse-to-warehouse **table**
@@ -109,7 +111,8 @@ warehouse query or Delta Sharing. Near-zero-diff on Gold columns / business key.
 
 ## D-006 — Engine-agnostic transform boundary; PySpark local with pandas fallback
 
-- **Date:** 2026-09-03 · **Status:** Committed
+- **Date:** 2026-09-03 · **Status:** Superseded
+- **Superseded by.** D-017.
 
 **Decision.** Transform functions take an input path and output path, operate on a
 DataFrame, and write Parquet — engine-agnostic at the boundary. Use **PySpark
@@ -432,3 +435,64 @@ the secret and scope. Tracked as Phase 2 in `ai-assisted-workflow.md`.
 **Naming.** The GitHub Actions job was previously called the "CI reviewer,"
 which conflates it with CI as a whole — GitHub Actions is the CI system; this is
 one job in it. Refer to it as the **GitHub Actions review job**.
+
+---
+
+## D-017 — v1 platform is Airflow + dbt + Snowflake (supersedes D-004, D-005, D-006)
+
+- **Date:** 2026-09-04 · **Status:** Committed
+
+**Context.** D-001 committed to Airflow v1 -> Databricks v2. Since then, two
+live interview processes -- Garner (Data Engineer III) and DoubleVerify
+(Sr. Analytics Data Platform Engineer) -- both run on Snowflake + dbt +
+Airflow, with no Databricks in either JD; Garner's loop is built around
+AI-assisted engineering. Separately, Snowflake and dbt are the two tools
+flagged as genuine resume gaps, whereas Databricks/DLT is already backed by
+production experience (the HealthVerity greenfield build). The capstone
+should close the gap and match the stack of the roles in play.
+
+**Decision.** v1's platform becomes **Airflow + dbt + Snowflake**:
+- Orchestration: Airflow, unchanged (trimmed docker-compose, LocalExecutor;
+  D-003 stands). docker-compose Postgres stays only as Airflow's metadata DB.
+- Transformation: dbt (dbt-core). Silver and Gold are dbt models. DQ checks
+  are dbt tests.
+- Warehouse: DuckDB for local dev + CI (dbt-duckdb); Snowflake for the
+  deployed demo (dbt-snowflake). One dbt project, two targets, same models.
+- Delivery: the customer dataset is a table in a Snowflake gold/delivery
+  schema (the Gold dbt model), plus a CSV extract + manifest as secondary
+  audit artifacts.
+- Databricks/Lakeflow stays v2, described as a migration-design mapping
+  (`architecture.md` §8), built as a migration off the working v1 (D-001
+  unaffected).
+
+**Supersedes.**
+- **D-004** (Parquet between layers): no Parquet-between-layer directories in
+  v1. Bronze is raw data loaded into warehouse tables; Silver/Gold are dbt
+  models in the warehouse. Raw provider inputs stay CSV/JSON/TXT. An
+  optional Parquet landing copy of raw is an audit artifact, not the
+  inter-layer contract.
+- **D-005** (Postgres delivery table): delivery target is a Snowflake table.
+  docker-compose Postgres is retained only as Airflow's metadata database.
+- **D-006** (engine-agnostic Python transform boundary; PySpark/pandas):
+  transformation is dbt SQL. Portability is preserved at the dbt-adapter
+  layer -- the same models run on DuckDB, Snowflake, and (v2)
+  Databricks/Spark SQL. Remaining Python (loaders, notes parsing) still gets
+  pytest.
+
+**Unaffected.** D-001, D-002, D-003, D-007, D-008, D-009, D-010 (reference
+codes now a dbt seed), D-011 (supplier isolation now also under
+`models/<supplier>/` or a `supplier:` tag), D-012, D-013, D-014, D-015
+(agent topology — untouched by this stack change), D-016 (review layering
+— untouched by this stack change).
+
+**Rationale.** Stack match to both live processes; targets the real skill
+gap; cleaner orchestration-vs-declarative boundary story that maps 1:1 to
+the DoubleVerify role; dbt is portable to Databricks so v2 becomes a
+storage/engine swap, not a rewrite.
+
+**Consequences.** dbt is a new tool on a 5-day timeline -- mitigated by
+DuckDB-first local dev (offline, fast, free), with Snowflake used only for
+the Day 5 demo run and screenshots so the trial's 30-day / $400 window
+isn't burned early. The 5-day plan's Silver and Gold days change shape (dbt
+models + tests instead of Python tasks); Day 1 gains dbt project + adapter
+setup.
