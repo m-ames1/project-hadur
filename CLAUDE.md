@@ -30,7 +30,8 @@ every Claude Code session in this repo.
 A simulated provider→customer data delivery. v1 = one Airflow DAG (local, Docker)
 moving a transactional feed through Bronze → Silver → Gold, cleaning dirty data,
 joining to a supporting table, and publishing a customer-ready **table** into
-Postgres. v2 (future) migrates the whole platform to Databricks / Lakeflow.
+Snowflake (DuckDB for local dev). v2 (future) migrates the whole platform to
+Databricks / Lakeflow.
 
 **Two goals:** prove real data-engineering capability, and demonstrate an
 AI-enabled Jira → agent → review → human-merge workflow.
@@ -47,11 +48,13 @@ AI-enabled Jira → agent → review → human-merge workflow.
   (subagent + CI) are advisory. Full rules: `docs/git-discipline.md`.
 - **SemVer from `0.0.0`.** `VERSION` + git tags + `CHANGELOG.md`. Stay in `0.x`
   through v1. Era tags: `airflow-platform-v1`, `databricks-platform-v2`.
-- **Parquet between Bronze/Silver/Gold layers.** Never CSV between layers. Raw
-  inputs are CSV/JSON/TXT; customer delivery is a Postgres table.
-- **Transform functions are engine-agnostic at the boundary** (in path → out path
-  → Parquet), so the compute engine can be swapped.
-- **Supplier-specific logic stays isolated under `src/<supplier>/`.** Do not split
+- **Bronze = raw data loaded into warehouse tables; Silver/Gold = dbt models in
+  the warehouse** (DuckDB local, Snowflake demo). Raw inputs stay CSV/JSON/TXT.
+  Customer delivery is a Snowflake table. No Parquet-between-layers contract.
+- **Transformation is dbt SQL, portable across adapters** (DuckDB ↔ Snowflake ↔
+  Databricks). Keep any Python transform helpers thin.
+- **Supplier-specific logic stays isolated under `src/<supplier>/`** and dbt
+  models under `models/<supplier>/` or tagged `supplier:<name>`. Do not split
   into multiple repos yet.
 - **Claude Code only for v1.** No Codex, no `AGENTS.md`.
 - **Underspecified Jira tickets bounce.** Restate acceptance criteria; stop rather
@@ -74,3 +77,7 @@ AI-enabled Jira → agent → review → human-merge workflow.
   Conventional Commits, squash-merge, human merges.
 - Tests: `pytest` for transform functions with real logic.
 - Airflow tasks are `PythonOperator`s calling `src/` functions. One DAG in v1.
+- **dbt** — models live in `dbt/models/`, tested with `dbt test`; Airflow runs
+  dbt via `BashOperator`. Two profile targets: `duckdb` (default) and
+  `snowflake` (demo), configured in `~/.dbt/profiles.yml` (never committed;
+  secrets via `env_var()` only).

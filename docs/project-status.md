@@ -16,9 +16,15 @@ changed, what's next, any gotchas. A cold session reads this first.
 
 ## What exists
 
-- `docs/` set: `handoff-brief.md`, `decision-log.md` (D-001..D-016),
+- `docs/` set: `handoff-brief.md`, `decision-log.md` (D-001..D-017),
   `architecture.md`, `ai-assisted-workflow.md`, `git-discipline.md`,
   `project-plan.md`, this file, `open-questions.md`.
+- **v1 platform pivoted to Airflow + dbt + Snowflake (D-017)**, superseding
+  D-004 (Parquet between layers), D-005 (Postgres delivery table), and D-006
+  (PySpark/pandas engine boundary). DuckDB is the local dev/CI warehouse;
+  Snowflake is the Day 5 demo target. `architecture.md`, `project-plan.md`,
+  `open-questions.md`, `CLAUDE.md`, and `handoff-brief.md` are rewritten to
+  match. Days 1–5 are not yet built — this is still a docs-only pivot.
 - `CLAUDE.md` router at repo root.
 - `.claude/settings.json`: allow `gh pr create` / `git push`, deny `gh pr merge`
   / `git push --force` (D-012). Plus a `SessionStart` hook (see below).
@@ -42,7 +48,9 @@ changed, what's next, any gotchas. A cold session reads this first.
 **Begin Day 1** of `project-plan.md`: repo scaffold (pyenv + Python 3.12,
 `pyproject.toml`, `VERSION` `0.0.0`, `CHANGELOG.md`, real README) + the rest of
 the agentic-workflow foundation — Atlassian MCP `.mcp.json`, `code-reviewer`
-subagent, `/work-ticket` command, Jira project + tickets — then tag `v0.0.0`.
+subagent, `/work-ticket` command, Jira project + tickets — plus the Day 1 dbt
+scaffold (dbt-core + dbt-duckdb + dbt-snowflake + dbt_utils, `dbt debug` green
+on `duckdb`) — then tag `v0.0.0`.
 
 The delivery mechanism (branch protection, PR permissions, git-discipline doc,
 branch-cleanup hook) is done; Day 1 builds on it.
@@ -69,3 +77,4 @@ None blocking. See `open-questions.md` for choices to make during the build
 | 2026-09-03 | Installed + authed `gh`; applied admin-enforced branch protection on `main` (D-013); logged D-012/D-013; split remaining changes into two independent branches off `main` and opened a PR for each | PRs open: `docs/planning-capture` (docs + decisions), `chore/claude-pr-permissions` (`.claude/settings.json`). Awaiting human review + merge. |
 | 2026-09-04 | User merged PR #1 + #2. Synced `main` to `bf22d42`, deleted the two merged local branches (SHA-verified). Switched `origin` to HTTPS (fetch was SSH, unusable in sandbox). Wrote `git-discipline.md`, logged D-014 (branch-cleanup + `main` ff hook), built the hook; split docs vs. implementation into two branches. | PRs open: `docs/git-discipline`, `chore/branch-cleanup-hook`. Awaiting human review + merge. |
 | 2026-09-04 | User merged PR #3 + #4. Bootstrapped the hook (`git checkout main && git pull`); a fresh session then ran it — pruned both feature branches, `main` at `83dc250`. Hook confirmed working end to end. | Workflow foundation complete. Next: Day 1. This PR refreshes the status doc. |
+| 2026-09-04 | Pivoted v1 platform to Airflow + dbt + Snowflake (D-017); superseded D-004/D-005/D-006; rewrote architecture, plan, open-questions, CLAUDE.md, handoff-brief | PR open, awaiting human merge |
