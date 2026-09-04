@@ -7,17 +7,12 @@ changed, what's next, any gotchas. A cold session reads this first.
 
 ## Current state
 
-- **Phase:** Planning captured; agentic-workflow + git discipline being set up.
-  Pipeline build not started.
+- **Phase:** Planning + agentic-workflow + git discipline done. Pipeline build
+  not started.
 - **As of:** 2026-09-04
 - **Version:** none tagged yet (target first tag: `v0.0.0` on Day 1)
-- **Merged:** PR #1 (`docs/planning-capture` — planning docs + D-012/D-013),
-  PR #2 (`chore/claude-pr-permissions` — `.claude/settings.json`). `main` at
-  `bf22d42`.
-- **Open PRs (both branched from `main`, independent):**
-  - `docs/git-discipline` — `git-discipline.md` + D-014 + CLAUDE.md/workflow
-    pointers
-  - `chore/branch-cleanup-hook` — `SessionStart` hook implementing D-014
+- **Merged:** PR #1–#4. `main` at `83dc250`. No open PRs. Only `main` exists
+  locally (branch-cleanup hook pruned the rest).
 
 ## What exists
 
@@ -26,7 +21,7 @@ changed, what's next, any gotchas. A cold session reads this first.
   `project-plan.md`, this file, `open-questions.md`.
 - `CLAUDE.md` router at repo root.
 - `.claude/settings.json`: allow `gh pr create` / `git push`, deny `gh pr merge`
-  / `git push --force` (D-012). *(merged)*
+  / `git push --force` (D-012). Plus a `SessionStart` hook (see below).
 - `gh` CLI installed and authenticated (account `m-ames1`, scopes
   `repo, read:org, gist` — no `workflow` scope yet; needed in Phase 2).
 - **Branch protection on `main`**, admin-enforced (D-013): PR required, 0
@@ -34,22 +29,23 @@ changed, what's next, any gotchas. A cold session reads this first.
   deletion blocked. No status checks yet. *(live)*
 - `origin` remote on **HTTPS** for fetch + push (repo-local), creds via `gh`
   token; `fetch.prune = true`. SSH unusable from the Claude Code sandbox.
-- `SessionStart` branch-cleanup + `main` fast-forward hook — *spec'd (D-014),
-  on branch `chore/branch-cleanup-hook`, not merged; not active until merged +
-  a new session starts.*
+- **`SessionStart` hook** (`.claude/hooks/prune-merged-branches.sh`, D-014):
+  *live and verified*. Each session start it deletes local branches whose PR
+  merged into `main` (API + SHA-matched) and fast-forwards `main`. Opt-out:
+  `git config hadur.autoUpdateMain false` / `.git/NO_AUTO_MAIN`.
 - Personal notes in `supporting-files/` (gitignored).
 - No pipeline code, no `.claude/` agents or commands, no `.mcp.json` (Jira), no
   Docker, no Jira project, no Airflow, no synthetic data.
 
 ## Next action
 
-1. User reviews and merges the two open PRs (`docs/git-discipline`,
-   `chore/branch-cleanup-hook`) on github.com.
-2. After merge: start a fresh Claude Code session — the new hook will
-   `git fetch`, prune merged local branches, and fast-forward `main`
-   automatically. (Also loads any `.claude/settings.json` changes.)
-3. Begin **Day 1** of `project-plan.md` (repo scaffold + rest of the agentic
-   workflow foundation: `.mcp.json`, `code-reviewer` subagent, `/work-ticket`).
+**Begin Day 1** of `project-plan.md`: repo scaffold (pyenv + Python 3.12,
+`pyproject.toml`, `VERSION` `0.0.0`, `CHANGELOG.md`, real README) + the rest of
+the agentic-workflow foundation — Atlassian MCP `.mcp.json`, `code-reviewer`
+subagent, `/work-ticket` command, Jira project + tickets — then tag `v0.0.0`.
+
+The delivery mechanism (branch protection, PR permissions, git-discipline doc,
+branch-cleanup hook) is done; Day 1 builds on it.
 
 ## Open questions blocking work
 
@@ -72,3 +68,4 @@ None blocking. See `open-questions.md` for choices to make during the build
 | 2026-09-03 | Captured the planning conversation into `docs/` + `CLAUDE.md` | Committed at `64802cc` on `docs/planning-capture` |
 | 2026-09-03 | Installed + authed `gh`; applied admin-enforced branch protection on `main` (D-013); logged D-012/D-013; split remaining changes into two independent branches off `main` and opened a PR for each | PRs open: `docs/planning-capture` (docs + decisions), `chore/claude-pr-permissions` (`.claude/settings.json`). Awaiting human review + merge. |
 | 2026-09-04 | User merged PR #1 + #2. Synced `main` to `bf22d42`, deleted the two merged local branches (SHA-verified). Switched `origin` to HTTPS (fetch was SSH, unusable in sandbox). Wrote `git-discipline.md`, logged D-014 (branch-cleanup + `main` ff hook), built the hook; split docs vs. implementation into two branches. | PRs open: `docs/git-discipline`, `chore/branch-cleanup-hook`. Awaiting human review + merge. |
+| 2026-09-04 | User merged PR #3 + #4. Bootstrapped the hook (`git checkout main && git pull`); a fresh session then ran it — pruned both feature branches, `main` at `83dc250`. Hook confirmed working end to end. | Workflow foundation complete. Next: Day 1. This PR refreshes the status doc. |
