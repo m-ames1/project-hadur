@@ -129,11 +129,11 @@ underspecified — it does not produce a best-guess implementation.
 
 ## 6. Branch & PR conventions
 
-- Branch: `hadur-nn-<short-slug>` off `main`. Never commit to `main`.
-- Commits: focused; smart-commit tag on at least one (`HADUR-nn ...`).
-- PR body template: what changed / why · ticket link · test evidence ·
-  `code-reviewer` findings + resolution · handoff notes for the reviewer.
-- Squash-merge. Merge message carries `HADUR-nn #done`.
+Full rules in **`git-discipline.md`**. Summary: branch `hadur-nn-<short-slug>` off
+`main`, never commit to `main`; Conventional Commits, atomic, smart-commit tag on
+at least one; PR body = what/why · ticket link · test evidence · `code-reviewer`
+findings + resolution · handoff notes; squash-merge with `HADUR-nn #done`; only a
+human merges.
 
 ---
 
