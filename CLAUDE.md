@@ -38,8 +38,11 @@ AI-enabled Jira → agent → review → human-merge workflow.
 ## Non-negotiables
 
 - **Python 3.12 via pyenv.** Not the newest Python, not macOS system Python.
-- **Branch off `main`; never commit to `main`.** Every change goes through a PR.
-  The human merges. Reviews (subagent + CI) are advisory.
+- **Branch off `main`; never commit to `main`.** `main` has admin-enforced branch
+  protection (D-013): PR required, force-push and deletion blocked. Claude Code
+  **may open PRs** (`git push` a feature branch, `gh pr create`) but **must never
+  merge them** (D-012) — every merge is a human action on github.com. Reviews
+  (subagent + CI) are advisory.
 - **SemVer from `0.0.0`.** `VERSION` + git tags + `CHANGELOG.md`. Stay in `0.x`
   through v1. Era tags: `airflow-platform-v1`, `databricks-platform-v2`.
 - **Parquet between Bronze/Silver/Gold layers.** Never CSV between layers. Raw

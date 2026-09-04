@@ -192,3 +192,81 @@ logic isolated under `src/` so a future extraction is natural. Do not split now.
 **Rationale.** Splitting now would be premature. The isolation makes "extract a
 supplier into its own repo" a demonstrable next step (the real Theseus
 evolution), triggered if synthetic providers are added later.
+
+---
+
+## D-012 — PR authority: Claude Code opens PRs, humans always merge
+
+- **Date:** 2026-09-03 · **Status:** Committed
+
+**Context.** Setting up the agentic workflow (D-008): Claude Code builds tickets
+on branches and needs a way to surface finished work. The question was whether
+Claude should be able to (a) open PRs and (b) merge PRs on the remote.
+
+**Decision.**
+- **Claude Code may open PRs** on the remote (`gh pr create`, after pushing a
+  feature branch). Durably authorized — no per-PR human approval needed.
+- **Claude Code must never merge PRs.** Every merge to `main` is a human action,
+  performed on github.com. No carve-out for "trivial" PRs.
+
+**Rationale.**
+- Opening a PR changes nothing protected, is trivially reversible (close it), and
+  is the mechanism that triggers CI, review, and the notification. Making a human
+  open every PR is friction with no safety gain — the diff is still reviewed
+  before merge either way.
+- Merging is the gate. If Claude could merge, it would effectively be approving
+  its own work — the exact self-bias the separate CI reviewer (D-008) exists to
+  avoid. Both review layers are advisory; the human merge is what makes them mean
+  something, and the merge click is the forcing function that makes the human
+  actually read the diff.
+
+**Caveats.**
+- **Solo repo.** On a multi-person repo, an agent opening PRs freely creates
+  review noise, muddies authorship, and can trip CI on half-formed work — there
+  you'd want PRs opened deliberately or clearly bot-labeled. Revisit if a second
+  contributor joins.
+- **Public repo.** PRs here show in public activity. Fine for a portfolio piece;
+  a reason to keep PR bodies clean.
+
+**Enforcement.** D-013 (branch protection) is the server-side layer.
+`.claude/settings.json` allows `gh pr create` / `git push` and explicitly denies
+`gh pr merge`.
+
+---
+
+## D-013 — Branch protection on `main`, admin-enforced
+
+- **Date:** 2026-09-03 · **Status:** Committed
+
+**Decision.** Classic branch protection on `main`:
+- Require a pull request before merging (**0 required approvals** — solo repo;
+  GitHub forbids self-approval, so requiring 1 would make own PRs unmergeable)
+- **Enforce for administrators** — the rule applies to the repo owner too
+- Require conversation resolution before merge
+- Require linear history (squash / rebase only)
+- Block force pushes; block branch deletion
+- Required status checks: none yet — add the CI review check in Phase 2
+
+**Rationale.**
+- **Layer 2, server-side.** Claude Code runs `git` / `gh` with the owner's
+  credentials, so `.claude/settings.json` permissions alone (layer 1) don't bind
+  it if misconfigured. Admin-enforced branch protection is enforced by GitHub
+  regardless of local config, so "Claude never pushes to or merges `main`"
+  becomes a mechanical fact rather than a matter of discipline.
+- **Forces the intended workflow** — ticket → branch → PR → review → human merge.
+  No accidental shortcut.
+- **Protects the artifact** — `main` always reflects reviewed, intentional state;
+  history can't be rewritten and the branch can't be deleted.
+- **Capstone content** — admin-enforced branch protection with required review
+  resolution is a concrete engineering-discipline talking point.
+
+**Tradeoff.** The owner also goes through PRs now; merges happen via the GitHub UI,
+not `git push`. Emergency bypass = toggle admin enforcement off, act, toggle back.
+The friction is intended.
+
+**Reusability.** A good default for any new project repo, not only this one.
+Captured as a cross-project preference in the user's personal memory so it carries
+forward to future repos.
+
+**Applied.** 2026-09-03 via `gh api --method PUT
+repos/m-ames1/project-hadur/branches/main/protection`.

@@ -50,7 +50,8 @@ merge commit smart-commit tag → Jira card → Done; branch deleted
 | Local reviewer | `.claude/agents/code-reviewer.md` — subagent, own context + model | No — markdown prompt |
 | Cold reviewer | `.github/workflows/code-review.yml` — `anthropics/claude-code-action` | Yes — ~30 lines YAML |
 | Notification | GitHub native "review requested" on the PR | No — a GitHub setting |
-| Merge gate | Branch protection on `main`: PR required + CI review status check | No — a GitHub setting |
+| PR creation | Claude runs `git push` + `gh pr create` — durably authorized (D-012) | No — a permission |
+| Merge gate | Branch protection on `main`, admin-enforced (D-013): PR required, force-push/deletion blocked, + CI review status check (Phase 2). Claude may open PRs; only a human merges (D-012). | No — a GitHub setting |
 | Jira ↔ GitHub | Smart commits (`HADUR-nn #in-review`, `#done`) or Jira's GitHub app | No — config |
 
 **This is Claude Code configuration, not an application.** It is *not* the Managed
@@ -78,8 +79,11 @@ the interactive `/agents` command for the subagent) and review them like any PR.
 ## 4. Phasing
 
 ### Phase 0 — foundations (no automation)
-- Branch protection on `main`: require a PR, no direct pushes. (CI status check
-  added in Phase 2.)
+- **[done 2026-09-03]** Branch protection on `main`, admin-enforced: PR required,
+  0 approvals, conversation resolution required, linear history, force-push and
+  deletion blocked. CI status check added in Phase 2. (D-013)
+- **[done 2026-09-03]** `.claude/settings.json`: allow `gh pr create` / `git
+  push`, deny `gh pr merge` / `git push --force`. (D-012)
 - Jira project + epics + tickets with real acceptance criteria + a ticket
   template / Definition of Ready.
 - Atlassian MCP connected: `claude mcp add --scope project` → `.mcp.json`
@@ -136,7 +140,9 @@ underspecified — it does not produce a best-guess implementation.
 ## 7. Things to get right (all endorsed in planning)
 
 1. Never let the flow merge itself — human merge is the gate; reviews are
-   advisory; branch protection enforces it.
+   advisory; admin-enforced branch protection makes it mechanical, not just a
+   convention (D-012, D-013). Opening PRs *is* delegated to Claude; merging is
+   not.
 2. The unbiased review is the CI one (separate process, artifact only). The
    subagent reduces bias but still shares repo conventions.
 3. Underspecified tickets bounce — no best-guess implementations.

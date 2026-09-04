@@ -7,28 +7,40 @@ changed, what's next, any gotchas. A cold session reads this first.
 
 ## Current state
 
-- **Phase:** Planning captured. Build not started.
+- **Phase:** Planning captured; agentic-workflow setup partly done. Pipeline
+  build not started.
 - **As of:** 2026-09-03
 - **Version:** none tagged yet (target first tag: `v0.0.0` on Day 1)
-- **Branch:** `main` (clean)
+- **Open PRs (both branched from `main`, independent):**
+  - `docs/planning-capture` — planning docs + D-012/D-013 decision records
+  - `chore/claude-pr-permissions` — `.claude/settings.json` PR permissions
 
 ## What exists
 
-- `docs/` planning set written: `handoff-brief.md`, `decision-log.md`,
+- `docs/` planning set: `handoff-brief.md`, `decision-log.md` (D-001..D-013),
   `architecture.md`, `ai-assisted-workflow.md`, `project-plan.md`, this file,
   `open-questions.md`.
 - `CLAUDE.md` router at repo root.
+- `gh` CLI installed and authenticated (account `m-ames1`, scopes
+  `repo, read:org, gist` — no `workflow` scope yet; needed in Phase 2).
+- **Branch protection on `main`**, admin-enforced (D-013): PR required, 0
+  approvals, conversation resolution + linear history required, force-push and
+  deletion blocked. No status checks yet. *(applied server-side; live now)*
+- `.claude/settings.json`: allow `gh pr create` / `git push`, deny `gh pr merge`
+  / `git push --force` (D-012). *(on branch `chore/claude-pr-permissions`, PR
+  open, not yet merged)*
 - Personal notes in `supporting-files/` (gitignored).
-- No code, no `.claude/` agents/commands, no `.mcp.json`, no Docker, no Jira
-  project, no Airflow, no synthetic data.
+- No pipeline code, no `.claude/` agents or commands, no `.mcp.json` (Jira), no
+  Docker, no Jira project, no Airflow, no synthetic data.
 
 ## Next action
 
-1. User reviews the `docs/` set and `CLAUDE.md`; corrects anything wrong.
-2. Decide whether the planning docs get committed (not yet done — awaiting the
-   user's explicit go).
-3. Begin **Day 1** of `project-plan.md` (repo scaffold + agentic workflow
-   foundation).
+1. User reviews and merges the two open PRs (`docs/planning-capture`,
+   `chore/claude-pr-permissions`) on github.com.
+2. After merge, `git checkout main && git pull` locally.
+3. Restart the Claude Code session so `.claude/settings.json` takes effect.
+4. Begin **Day 1** of `project-plan.md` (repo scaffold + rest of the agentic
+   workflow foundation: `.mcp.json`, `code-reviewer` subagent, `/work-ticket`).
 
 ## Open questions blocking work
 
@@ -48,4 +60,5 @@ None blocking. See `open-questions.md` for choices to make during the build
 
 | Date | Session did | Left it at |
 |---|---|---|
-| 2026-09-03 | Captured the planning conversation into `docs/` + `CLAUDE.md` | Awaiting user review of the docs; nothing committed |
+| 2026-09-03 | Captured the planning conversation into `docs/` + `CLAUDE.md` | Committed at `64802cc` on `docs/planning-capture` |
+| 2026-09-03 | Installed + authed `gh`; applied admin-enforced branch protection on `main` (D-013); logged D-012/D-013; split remaining changes into two independent branches off `main` and opened a PR for each | PRs open: `docs/planning-capture` (docs + decisions), `chore/claude-pr-permissions` (`.claude/settings.json`). Awaiting human review + merge. |
