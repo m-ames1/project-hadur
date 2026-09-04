@@ -192,11 +192,13 @@ separate process that only ever sees the diff and PR description, never the
 implementation reasoning. Use both: subagent = fast first pass (like a linter with
 judgment), CI = the gate.
 
-**Agent topology (D-015):** three agents only — the implementer (the main session
-via `/work-ticket`), the `code-reviewer` subagent, and the CI reviewer. Agents are
-split only for context/bias isolation, never by task type, technology, or pipeline
-layer. Domain specialization lives in docs, skills, and ticket scope — not in
-per-domain agents. Full treatment in `ai-assisted-workflow.md` §3.
+**Agent topology (D-015):** the implementer (the main session via `/work-ticket`)
+and the `code-reviewer` subagent. A GitHub Actions review job is a defined third
+layer but **deferred to Phase 2 (D-016)** — v1 runs the subagent plus the human
+PR review. Agents are split only for context/bias isolation, never by task type,
+technology, or pipeline layer. Domain specialization lives in docs, skills, and
+ticket scope — not in per-domain agents. Full treatment in
+`ai-assisted-workflow.md` §3.
 
 **These are config files, not an application.** `.claude/agents/code-reviewer.md`
 (subagent), `.claude/commands/work-ticket.md` (slash command),

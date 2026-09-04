@@ -379,3 +379,56 @@ reviewable, shared — rather than in a set of agent prompts that must be kept
 mutually consistent. Extends D-007 (Claude Code only, no Codex / `AGENTS.md`) and
 D-008 (human-gated two-tier review). Operational detail in
 `ai-assisted-workflow.md` §3.
+
+---
+
+## D-016 — v1 code review: `code-reviewer` subagent only; GitHub Actions review job deferred
+
+- **Date:** 2026-09-04 · **Status:** Committed
+
+**Context.** The workflow defines two automated code-review layers: the
+`code-reviewer` subagent (runs locally, before the PR) and a GitHub Actions job
+that runs the Claude model against the PR diff on GitHub's servers (D-008, D-015).
+The v1 question is whether to build both.
+
+**Decision.** v1 uses the **`code-reviewer` subagent only**, plus the mandatory
+human review on the PR. The **GitHub Actions review job is deferred** to Phase 2 —
+a documented, one-file add-on.
+
+**Why the two layers are not redundant.** They are not "fresh vs. stale" — the
+subagent runs in its own context window and never sees the parent session's
+reasoning. They do different jobs at different moments:
+
+- **Subagent** — a pre-flight pass *before the PR exists*. Fast and cheap; the
+  implementer is still warm and fixes findings in the same session, no
+  round-trip. Purpose: improve the artifact before a human sees it.
+- **GitHub Actions job** — a *gate* after the PR exists. Runs on every push, on a
+  clean machine, with a fixed neutral prompt; produces a merge-blocking status
+  check and an audit trail. Purpose: guarantee every PR got an independent look
+  regardless of how it was produced. Structurally impossible to prime — no
+  per-PR prompt is authored.
+
+Both use the same model, so neither catches a systematic model blind spot the
+other would.
+
+**Why subagent-only for v1.**
+- The human review on the PR is already an independent cold pass — the diff, read
+  fresh, before merge.
+- The subagent adds value immediately for free (one markdown file): cleaner PRs,
+  faster iteration.
+- The GitHub Actions job largely duplicates the careful human review, at real
+  cost — an `ANTHROPIC_API_KEY` secret, the `workflow` OAuth scope, tokens per
+  run, another moving part.
+- Its distinct payoff — an enforced, auditable "every PR is automatically gated"
+  narrative — matters for a team or an interview story, not for shipping the
+  5-day v1.
+
+**When to add the GitHub Actions job.** When the enforced CI gate is worth the
+setup: a visible status check that blocks merge, an audit trail, coverage for PRs
+that skip the local flow. One-file addition
+(`.github/workflows/code-review.yml` using `anthropics/claude-code-action`) plus
+the secret and scope. Tracked as Phase 2 in `ai-assisted-workflow.md`.
+
+**Naming.** The GitHub Actions job was previously called the "CI reviewer,"
+which conflates it with CI as a whole — GitHub Actions is the CI system; this is
+one job in it. Refer to it as the **GitHub Actions review job**.
