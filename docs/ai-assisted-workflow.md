@@ -121,8 +121,8 @@ a one-file addition (`.github/workflows/code-review.yml` +
 ### Why not per-domain agents
 
 A separate agent is justified only when it must *not* share the main session's
-context. "Chore vs docs", "Bronze vs Silver vs Gold", and "Airflow vs dbt vs
-Snowflake" are labels, not structural boundaries — the same conventions, repo,
+context. "Chore vs docs", "staging vs intermediate vs marts", and "Airflow vs
+dbt vs Snowflake" are labels, not structural boundaries — the same conventions, repo,
 and context apply to all of them. Per-domain agents would duplicate most of their
 instructions, drift out of sync with each other and with `CLAUDE.md`, and add
 cold-start and orchestration cost with no behavioural gain — a poor trade on a
@@ -132,9 +132,9 @@ solo, time-boxed build.
 
 | Concern | Mechanism |
 |---|---|
-| **Domain rules** (Bronze/Silver/Gold responsibilities, layer contracts) | Documentation. `architecture.md` today; a dedicated conventions doc if depth is needed. The implementer reads the section the ticket points to. |
+| **Domain rules** (staging/intermediate/marts responsibilities, layer contracts) | Documentation. `architecture.md` today; a dedicated conventions doc if depth is needed. The implementer reads the section the ticket points to. |
 | **Repeatable procedures** (e.g. "how an Airflow task is written in this repo") | A `.claude/skills/` skill the implementer loads when relevant — added once repetition justifies it, not up front. |
-| **Per-task instruction** ("this is a Bronze task, here are the rules") | The ticket: acceptance criteria plus links to the relevant `docs/` sections. |
+| **Per-task instruction** ("this is a staging task, here are the rules") | The ticket: acceptance criteria plus links to the relevant `docs/` sections. |
 | **Output category** | The Conventional Commit type (`feat` / `fix` / `chore` / `docs`). It labels the change; it is not a reason for a different worker. |
 
 The result: intelligence concentrates in tickets and docs — versioned, reviewable,

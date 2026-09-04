@@ -496,3 +496,64 @@ the Day 5 demo run and screenshots so the trial's 30-day / $400 window
 isn't burned early. The 5-day plan's Silver and Gold days change shape (dbt
 models + tests instead of Python tasks); Day 1 gains dbt project + adapter
 setup.
+
+---
+
+## D-018 — v1 uses dbt-native staging/intermediate/marts naming, not medallion Bronze/Silver/Gold
+
+- **Date:** 2026-09-04 · **Status:** Committed
+
+**Context.** D-017 pivoted v1 to Airflow + dbt + Snowflake specifically to
+close a real dbt/Snowflake skill gap for two live interview processes. The
+docs written under D-017 kept Bronze/Silver/Gold (medallion) naming for
+schemas, dbt model prefixes, and Airflow task names — but medallion is
+Databricks-coined terminology, not a dbt or Snowflake convention. Using it
+throughout a dbt project undercuts the exact signal the D-017 pivot was
+meant to send: that this project reflects real, idiomatic dbt/Snowflake
+practice, not a renamed Databricks pattern.
+
+**Decision.** v1 replaces medallion naming with dbt Labs' idiomatic
+layering everywhere it appears as a schema name, dbt model prefix, folder,
+or Airflow task name:
+- **Bronze → raw** (schema `raw`, loaded directly by an Airflow task, not
+  a dbt model; referenced via `source()`).
+- **Silver → staging + intermediate.** Staging (`stg_*`): thin, 1:1 with
+  the source, casing/type/date cleanup only. Intermediate (`int_*`): the
+  actual business logic — dedup, validation, quarantine, DQ metrics.
+- **Gold → marts** (`models/marts/`, final customer-facing tables,
+  `<customer>_<dataset>` naming without a layer prefix).
+
+Corresponding renames: `load_bronze` → `load_raw`; `dbt_run_silver` →
+`dbt_run_staging`; `dbt_test_silver` (the DQ gate) → `dbt_test_intermediate`;
+`dbt_run_gold` → `dbt_run_marts`; `dbt_test_gold` → `dbt_test_marts`;
+`publish_gold` → `publish_marts`; `silver_transactions_validated` →
+`int_transactions_validated`; `silver_transactions_deduped` →
+`int_transactions_deduped`; `quarantine_transactions` →
+`int_quarantine_transactions`; `dq_metrics` → `int_dq_metrics`; Snowflake
+`gold`/`delivery` schema → `marts` schema; `bronze._ingest_log` →
+`raw._ingest_log`.
+
+Medallion language (Bronze/Silver/Gold) is retained only in the v2
+Databricks migration mapping (`architecture.md` §8), where it is the
+accurate, idiomatic term for that platform, and as a one-line bridge phrase
+noting the conceptual continuity between the two eras' naming.
+
+**Rationale.** dbt's own style guide documents staging/intermediate/marts
+as the standard project layering; using it is a direct, low-cost signal of
+real dbt fluency to the exact audience D-017 targets. The switch is pure
+renaming — no pipeline code exists yet, making this the cheapest possible
+point to make it. The v1/v2 naming divergence is itself honest: it
+reflects that the two platforms genuinely use different idiomatic
+vocabulary, which is a real, defensible part of the migration story rather
+than an inconsistency to hide.
+
+**Consequences.** Every `docs/` file written under D-017's naming needed
+updating (`architecture.md`, `CLAUDE.md`, `project-plan.md`,
+`open-questions.md`, `handoff-brief.md`, `ai-assisted-workflow.md`) —
+done in this same change. No effect on D-017's platform/tool decision
+itself, only on the naming layer.
+
+**Supersedes.** The Bronze/Silver/Gold naming portions of D-017 and the
+naming used in `architecture.md` as originally written under D-017. D-017's
+platform decision (Airflow + dbt + Snowflake for v1, Databricks v2) is
+otherwise unaffected.

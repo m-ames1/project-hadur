@@ -11,8 +11,9 @@ the plan; that file is where you are in it.
 
 ## Working model across sessions
 
-- The unit of work is a Jira ticket. Layers are sequential (Bronze → Silver →
-  Gold), so this is **serial handoff across sessions**, not parallel sessions.
+- The unit of work is a Jira ticket. Layers are sequential (raw → staging →
+  intermediate → marts, per D-018), so this is **serial handoff across
+  sessions**, not parallel sessions.
 - Each session: read `project-status.md` → pick up the next ticket → run
   `/work-ticket` → PR → review → merge → update `project-status.md` → end.
 - Context-window saving comes from each session being short and single-purpose.
@@ -48,52 +49,56 @@ Stand up the delivery mechanism before any pipeline code.
 
 ---
 
-## Day 2 — Synthetic data + Bronze
+## Day 2 — Synthetic data + raw
 
 - Data generator (`synthetic/`): `transactions.csv`, one supporting table
   (`members.csv` or `providers.csv` — pick here), `reference_codes.csv`,
   `payload_metadata.json`, `provider_notes.txt`. Seed the deliberate quality
   issues (see `architecture.md` §2).
-- `load_bronze`: loads raw files into DuckDB `raw`/`bronze` schema; `dbt seed`
+- `load_raw`: loads raw files into DuckDB `raw` schema; `dbt seed`
   for reference codes. Capture ingest metadata; log row counts; no transforms.
-- Airflow DAG skeleton with `land_raw` + `load_bronze` wired and runnable in
+- Airflow DAG skeleton with `land_raw` + `load_raw` wired and runnable in
   the local container.
 - Confirm dbt runs clean on DuckDB — `dbt run` / `dbt seed` execute without
   adapter errors against the Day 1 scaffold.
 - Keep raw archive + ingest log.
 
 **Exit criterion:** `airflow dags trigger transactional_pipeline` runs
-`land_raw` and `load_bronze` green, and the raw files land in DuckDB `bronze`
+`land_raw` and `load_raw` green, and the raw files land in DuckDB `raw`
 tables with an ingest log.
 
 ---
 
-## Day 3 — Silver
+## Day 3 — Staging + intermediate
 
-- Build the Silver dbt models: `stg_transactions`/`stg_<entity>` →
-  `silver_transactions_validated` → `silver_transactions_deduped` →
-  `quarantine_transactions`/`reject_log` → `dq_metrics`, with `schema.yml`
-  tests (schema, null/range, reference-code `relationships`/`accepted_values`).
-- `quarantine_transactions` reproduces the bad-row predicate via a shared macro
-  also used to exclude rows from `silver_transactions_validated`/`_deduped`,
-  tagging each with a `reject_reason` (not dbt's `store_failures`).
-- Wire `dbt_run_silver` + `dbt_test_silver` into the DAG.
+- Build the staging dbt models: `stg_transactions`/`stg_<entity>` — thin,
+  1:1 cleanup. Then the intermediate models:
+  `int_transactions_validated` → `int_transactions_deduped` →
+  `int_quarantine_transactions`/`reject_log` → `int_dq_metrics`, with
+  `schema.yml` tests (schema, null/range, reference-code
+  `relationships`/`accepted_values`).
+- `int_quarantine_transactions` reproduces the bad-row predicate via a shared
+  macro also used to exclude rows from
+  `int_transactions_validated`/`_deduped`, tagging each with a
+  `reject_reason` (not dbt's `store_failures`).
+- Wire `dbt_run_staging` + `dbt_test_intermediate` into the DAG.
 
-**Exit criterion:** DAG runs `land_raw` → `load_bronze` → `dbt_run_silver` →
-`dbt_test_silver` green; `quarantine_transactions` and `dq_metrics` are
-populated; a known-bad seeded row is provably quarantined with a reason.
+**Exit criterion:** DAG runs `land_raw` → `load_raw` → `dbt_run_staging` →
+`dbt_test_intermediate` green; `int_quarantine_transactions` and
+`int_dq_metrics` are populated; a known-bad seeded row is provably
+quarantined with a reason.
 
 ---
 
-## Day 4 — Gold + the join + failure demo
+## Day 4 — Marts + the join + failure demo
 
-- `dbt_test_silver` is the DQ gate — fails the DAG on breached thresholds (set
-  the thresholds here; record them).
-- `gold_*` dbt models: join deduped transactions to the supporting table;
+- `dbt_test_intermediate` is the DQ gate — fails the DAG on breached
+  thresholds (set the thresholds here; record them).
+- Marts dbt models: join deduped transactions to the supporting table;
   apply customer delivery rules; materialize as a table; `unique`+`not_null`
   tests on the business key.
-- `publish_gold`: writes the `delivery_log` row + CSV extract + Markdown DQ
-  summary; verifies Gold row count against `dq_metrics`.
+- `publish_marts`: writes the `delivery_log` row + CSV extract + Markdown DQ
+  summary; verifies the mart's row count against `int_dq_metrics`.
 - **Failure-and-recovery demo:** feed a malformed file → a task fails → fix →
   rerun → success. Record it.
 
@@ -137,10 +142,10 @@ Rough Jira structure — refine acceptance criteria per ticket at pickup time.
 | **Local platform** | docker-compose · Airflow image · DuckDB warehouse · Snowflake target |
 | **dbt project** | `dbt_project.yml` · `~/.dbt/profiles.yml` (duckdb + snowflake, not committed) · seeds · dbt_utils |
 | **Synthetic data** | generator · seeded quality issues · data dictionary |
-| **Bronze** | `load_bronze` · ingestion metadata + row-count logging |
-| **Silver** | dbt models (stg, validated, deduped, quarantine via shared macro, dq_metrics) + schema tests |
-| **DQ gate** | `dbt_test_silver` task + thresholds |
-| **Gold delivery** | gold dbt model (join + rules) · `publish_gold` (Snowflake) · `delivery_log` + `data_dictionary` models |
+| **Raw** | `load_raw` · ingestion metadata + row-count logging |
+| **Staging + intermediate** | dbt models (stg, validated, deduped, quarantine via shared macro, dq_metrics) + schema tests |
+| **DQ gate** | `dbt_test_intermediate` task + thresholds |
+| **Marts delivery** | marts dbt model (join + rules) · `publish_marts` (Snowflake) · `delivery_log` + `data_dictionary` models |
 | **Unstructured** | parse/classify `provider_notes.txt` → structured rows |
 | **Testing & QA** | pytest for transforms · failure-and-recovery demo |
 | **Docs & demo** | architecture diagram · README run instructions · screenshots · interview demo script |
