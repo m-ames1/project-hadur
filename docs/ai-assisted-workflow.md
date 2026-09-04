@@ -61,18 +61,50 @@ the interactive `/agents` command for the subagent) and review them like any PR.
 
 ---
 
-## 3. Why two review tiers
+## 3. Agent topology and specialization
 
-- **`code-reviewer` subagent** — runs in a fresh context window, so it is not
-  primed by the implementation reasoning. But it still runs inside the repo
-  session: it inherits `CLAUDE.md`, repo conventions, and whatever the main agent
-  left in shared state. Treat it as a fast, high-quality first pass — a linter
-  with judgment.
-- **CI review (GitHub Actions)** — a genuinely separate process. It sees only the
-  diff and the PR description; it never saw the conversation that produced the
-  code. This is the unbiased reviewer and the authoritative gate.
-- **Both are advisory.** The human merge is the gate. Branch protection enforces
-  that even if a prompt misbehaves — the flow cannot merge itself.
+Decision record: `decision-log.md` **D-015**.
+
+### The agent set
+
+The workflow uses a deliberately small set of agents. Boundaries are drawn only
+where **context or bias isolation requires them** — never by task category,
+technology, or pipeline layer.
+
+| Agent | Role | Why it is separate |
+|---|---|---|
+| **Implementer** | The main Claude Code session, driven by `/work-ticket`. Holds full repo context (`CLAUDE.md`, `docs/`, the ticket). All `feat` / `fix` / `chore` / `docs` work runs here. | Not a defined subagent — it is the session. One implementer. |
+| **`code-reviewer` subagent** (`.claude/agents/code-reviewer.md`) | First-pass review of the diff. | Runs in a fresh context window — not primed by the implementation reasoning. It still inherits `CLAUDE.md` and repo conventions, so treat it as a fast, high-quality first pass, not the final word. |
+| **CI reviewer** (`.github/workflows/code-review.yml`, Phase 2) | Authoritative pre-merge review; required status check. | A genuinely separate process that sees only the diff and PR description — it never saw the conversation that produced the code. This is the unbiased reviewer and the gate. |
+
+Both reviewers are advisory. The human merge is the gate; branch protection
+(D-013) enforces that the flow cannot merge itself.
+
+A planning/architect subagent (epic → tickets) may be added later if that work
+grows. It is not part of the initial set.
+
+### Why not per-domain agents
+
+A separate agent is justified only when it must *not* share the main session's
+context. "Chore vs docs", "Bronze vs Silver vs Gold", and "Airflow vs dbt vs
+Snowflake" are labels, not structural boundaries — the same conventions, repo,
+and context apply to all of them. Per-domain agents would duplicate most of their
+instructions, drift out of sync with each other and with `CLAUDE.md`, and add
+cold-start and orchestration cost with no behavioural gain — a poor trade on a
+solo, time-boxed build.
+
+### Where specialization goes instead
+
+| Concern | Mechanism |
+|---|---|
+| **Domain rules** (Bronze/Silver/Gold responsibilities, layer contracts) | Documentation. `architecture.md` today; a dedicated conventions doc if depth is needed. The implementer reads the section the ticket points to. |
+| **Repeatable procedures** (e.g. "how an Airflow task is written in this repo") | A `.claude/skills/` skill the implementer loads when relevant — added once repetition justifies it, not up front. |
+| **Per-task instruction** ("this is a Bronze task, here are the rules") | The ticket: acceptance criteria plus links to the relevant `docs/` sections. |
+| **Output category** | The Conventional Commit type (`feat` / `fix` / `chore` / `docs`). It labels the change; it is not a reason for a different worker. |
+
+The result: intelligence concentrates in tickets and docs — versioned, reviewable,
+shared — rather than in a set of agent prompts that must be kept mutually
+consistent.
 
 ---
 

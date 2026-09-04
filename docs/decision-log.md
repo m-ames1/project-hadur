@@ -323,3 +323,59 @@ already current for rebasing — but it's safe and removes the "branched from st
 `docs/git-discipline`; the hook + `.claude/settings.json` wiring on
 `chore/branch-cleanup-hook` — decision and implementation as separate concerns
 (D-012/D-013 precedent).
+
+---
+
+## D-015 — Agent topology: minimal, isolation-driven
+
+- **Date:** 2026-09-04 · **Status:** Committed
+
+**Decision.** The AI-assisted workflow uses a deliberately small set of agents.
+Agent boundaries are drawn **only where context or bias isolation requires
+them** — never by task category, technology, or pipeline layer.
+
+The agent set:
+
+1. **Implementer** — the main Claude Code session, driven by `/work-ticket`. It
+   holds full repo context (`CLAUDE.md`, `docs/`, the ticket) and handles all
+   `feat` / `fix` / `chore` / `docs` work. It is the session, not a defined
+   subagent. One implementer.
+2. **`code-reviewer` subagent** (`.claude/agents/code-reviewer.md`) — a fresh
+   context window that has not seen the implementation reasoning. First-pass
+   review.
+3. **CI reviewer** — the GitHub Actions Claude review (Phase 2). A cold, separate
+   process that sees only the diff and PR description. The authoritative
+   pre-merge gate.
+
+A planning/architect subagent (epic → tickets) may be added later if that work
+grows; it is not part of the initial set. Both reviewers are advisory — the human
+merge is the gate (D-008, D-013).
+
+**Rationale.** A separate agent is justified only when it must *not* share the
+main session's context — for freshness (`code-reviewer`) or full isolation (CI
+reviewer). "Chore vs docs", "Bronze vs Silver vs Gold", and "Airflow vs dbt vs
+Snowflake" are labels, not structural boundaries: the same conventions, repo, and
+context apply. Per-domain agents would duplicate most of their instructions,
+drift out of sync with each other and with `CLAUDE.md`, and add cold-start and
+orchestration cost with no behavioural gain — a poor trade on a solo, time-boxed
+build.
+
+**Where specialization goes instead.**
+- **Domain rules → documentation.** Bronze/Silver/Gold responsibilities live in
+  `architecture.md`; deeper conventions get a dedicated doc. The implementer
+  reads the section the ticket points to.
+- **Repeatable procedures → skills.** A recurring checklist (e.g. "how an Airflow
+  task is written in this repo") becomes a `.claude/skills/` skill the
+  implementer loads when relevant — added once repetition justifies it, not up
+  front.
+- **Per-task instruction → the ticket.** Acceptance criteria plus links to the
+  relevant `docs/` sections are how a ticket says "this is a Bronze task, here
+  are the rules."
+- **Output category → the commit type.** `feat` / `fix` / `chore` / `docs` label
+  the change; they are not a reason for a different worker.
+
+**Consequences.** Intelligence concentrates in tickets and docs — versioned,
+reviewable, shared — rather than in a set of agent prompts that must be kept
+mutually consistent. Extends D-007 (Claude Code only, no Codex / `AGENTS.md`) and
+D-008 (human-gated two-tier review). Operational detail in
+`ai-assisted-workflow.md` §3.
